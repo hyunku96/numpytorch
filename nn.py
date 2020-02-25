@@ -2,25 +2,25 @@ import numpy as np
 
 class node:
     '''
-    data : data of feed forwarding
-    gradient : gradient of back propagation
+    class for store data and gradient
+    data : layer's input data
+    function : layer's back prapagation function
     '''
     def __init__(self, data=None):
         self.data = data
-        self.gradient = None
+        self.function = None
 
 class DCG:
     '''
     singleton class
+    To Do - change list to graph for improve of DCG
+    instance : singleton instance
     link : simple implementation of 'Dynamic Computational Graph' in linked list
-    curr : pointer of current backward calculation
     '''
     instance = None
 
     def __init__(self):
-        head = node()
-        self.link = [head]
-        self.curr = 0
+        self.link = []
 
     def getDCG(self):
         if self.instance is None:
@@ -29,30 +29,109 @@ class DCG:
 
     def append(self, node):
         self.link.append(node)
-        self.curr += 1
 
     def pop(self):
-        self.curr -= 1
-        return self.link.pop()
+        if len(self.link) > 0:
+            return self.link.pop()
+        else:
+            return None
 
-class Linear(DCG):
+dcg = []
+
+class Linear:
     '''
     fully-connected layer
     '''
-    def __new__(self, *args, **kwargs):
-        return self.forward
-
     def __init__(self, input_node, output_node):
-        super().__init__()
-        self.dcg = super().getDCG()
+        '''
+        get instance of DCG and init pramters
+        '''
         self.w = np.random.rand(input_node, output_node) - 0.5
         self.b = np.random.rand(output_node) - 0.5
 
+    def __call__(self, *args, **kwargs):
+        return self.forward(args)
+
     def forward(self, data):
+        '''
+        feed forward and store input data and backward function to DCG
+        '''
         data = np.ravel(data, order='C')
-        tmp = node(np.dot(data, self.w) + self.b)
-        self.dcg.append(tmp)
+        tmp = node(data)
+        tmp.function = self.backward
+        dcg.append(tmp)
+        return np.dot(data, self.w) + self.b
+
+    def backward(self, input, gradient, lr):
+        dw = np.dot(input, gradient)
+        db = gradient
+        gradient = np.dot(self.w, gradient)
+        self.w = self.w - lr * dw
+        self.b = self.b - lr * db
+        return gradient
+
+class sigmoid:
+    '''
+    sigmoid activation fuction
+    '''
+    def __call__(self, *args, **kwargs):
+        return self.forward(args)
+
+    def forward(self, data):
+        '''
+        feed forward and store input data and backward function to DCG
+        '''
+        tmp = node(data)
+        tmp.function = self.backward
+        dcg.append(tmp)
+        return 1 / (1 + np.exp(-np.asarray(data)))
+
+    def backward(self, input):
+        return self.forward(input) * (1 - self.forward(input))
+
+class relu:
+    '''
+    ReLU activation function
+    '''
+    def __call__(self, *args, **kwargs):
+        return self.forward(args)
+
+    def forward(self, data):
+        '''
+        feed forward and store input data and backward function to DCG
+        '''
+        tmp = node(data)
+        tmp.function = self.backward
+        dcg.append(tmp)
+        return np.maximum(0, data)
+
+    def backward(self, input):
+        '''
+        using numpy boolean indexing(mask)
+        '''
+        gradient = np.maximum(0, input)
+        gradient[gradient > 0] = 1
+        return gradient
+
+
+'''
+class test:
+    def __init__(self):
+        tmp = node(0)
+        tmp.function = self.backward
+        dcg.append(tmp)
+
+    def __call__(self, *args, **kwargs):
+        return self.forward(args)
+
+    def forward(self, data):
+        print(data)
+        return data
 
     def backward(self):
-        pass
+        print("backward")
 
+t = test()
+print(t(1, 2, 3))
+dcg.pop().function()
+'''
