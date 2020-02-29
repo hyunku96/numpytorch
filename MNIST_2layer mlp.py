@@ -8,10 +8,11 @@ class net:
     def __init__(self):
         self.fc1 = nn.Linear(784, 28)
         self.fc2 = nn.Linear(28, 10)
+        self.sigmoid = nn.sigmoid()
 
     def forward(self, x):
-        x = nn.sigmoid(self.fc1(x))
-        x = nn.sigmoid(self.fc2(x))
+        x = self.sigmoid(self.fc1(x))
+        x = self.sigmoid(self.fc2(x))
         return x
 
 # data loading
@@ -24,12 +25,17 @@ for epoch in range(100):
     indexes = np.random.permutation(len(train_set[1]))
     for index in tqdm(indexes):
         output = model.forward(train_set[0][index])
-        loss = nn.MSE(output, train_set[1][index])
+        label = np.zeros(10)  # convert to one-hot vector (maybe data loader can do this)
+        label[train_set[1][index]] = 1
+        loss = nn.MSE(output, label)
         loss.backward()
         #optimizer.step() <- not yet
+
+    # valid model <- stacking dcg while valid forwarding
     acc = 0
     for i in range(len(valid_set[1])):
-        output = model.forward(train_set[0][i])
+        output = model.forward(valid_set[0][i])
+        nn.dcg.clear()
         if output.argmax() == valid_set[1][i]:
             acc += 1
     print("epoch:{0}, accuracy:{1}".format(epoch, acc/len(valid_set[1])))
@@ -38,6 +44,7 @@ for epoch in range(100):
 acc = 0
 for i in range(len(test_set[1])):
     output = model.forward(test_set[0][i])
+    nn.dcg.clear()
     if output.argmax() == test_set[1][i]:
         acc += 1
 print("accuracy:", acc/len(test_set[1]))

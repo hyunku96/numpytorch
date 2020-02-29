@@ -56,18 +56,19 @@ class Linear:
         '''
         feed forward and store input data and backward function to DCG
         '''
-        data = np.ravel(data, order='C')
+        data = np.reshape(data, (1, -1))
         tmp = node(data)
         tmp.function = self.backward
         dcg.append(tmp)
-        return np.dot(data, self.w) + self.b
+        output = np.dot(data, self.w) + self.b
+        return output
 
-    def backward(self, input, gradient, lr):
-        dw = np.dot(input, gradient)
+    def backward(self, input, gradient):
+        dw = np.dot(np.reshape(input, (-1, 1)), gradient)
         db = gradient
-        gradient = np.dot(self.w, gradient)
-        self.w = self.w - lr * dw
-        self.b = self.b - lr * db
+        gradient = np.dot(gradient, self.w.T)
+        self.w = self.w - 0.01 * dw  # change lr in optimizer class
+        self.b = self.b - 0.01 * db
         return gradient
 
 class sigmoid:
@@ -75,19 +76,26 @@ class sigmoid:
     sigmoid activation fuction
     '''
     def __call__(self, *args, **kwargs):
-        return self.forward(args)
+        return self.forward(args[0])
+
+    def sigmoid(self, x):
+        '''
+        forward adds dcg nodes so i split forward & sigmoid method
+        '''
+        return 1 / (1 + np.exp(-x))
 
     def forward(self, data):
         '''
         feed forward and store input data and backward function to DCG
         '''
-        tmp = node(data)
+        tmp = node(np.array(data))
         tmp.function = self.backward
         dcg.append(tmp)
-        return 1 / (1 + np.exp(-np.asarray(data)))
+        return self.sigmoid(tmp.data)
 
-    def backward(self, input):
-        return self.forward(input) * (1 - self.forward(input))
+    def backward(self, input, gradient):
+        gradient = self.sigmoid(input) * (1 - self.sigmoid(input)) * gradient
+        return gradient
 
 class relu:
     '''
@@ -105,14 +113,35 @@ class relu:
         dcg.append(tmp)
         return np.maximum(0, data)
 
-    def backward(self, input):
+    def backward(self, input, gradient):
         '''
         using numpy boolean indexing(mask)
         '''
-        gradient = np.maximum(0, input)
-        gradient[gradient > 0] = 1
+        mask = np.maximum(0, input)
+        mask[mask > 0] = 1
+        gradient = gradient * mask
         return gradient
 
+class MSE:
+    '''
+    loss function
+    compute MSE and initiate back propagation
+    '''
+    def __init__(self, output, label):
+        self.output = output
+        self.label = label
+
+    def backward(self):
+        if len(dcg) <= 0:
+            print("Cannot find computation to calculate gradient")
+            return
+        else:
+            loss = self.output - self.label
+            tmp = dcg.pop()
+            gradient = tmp.function(tmp.data, loss)
+            while len(dcg) > 0:
+                tmp = dcg.pop()
+                gradient = tmp.function(tmp.data, gradient)
 
 '''
 class test:
