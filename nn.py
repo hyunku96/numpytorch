@@ -113,7 +113,8 @@ class relu:
         gradient[gradient > 0] = 1
         return gradient
 
-
+class MSE:
+    
 '''
 class test:
     def __init__(self):
