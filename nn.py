@@ -3,6 +3,7 @@ All layers are defined in class but 'Dynamic Computational Graph' is defined in 
 Loss function starts back propagation by using pop method of DCG.
 There exists only Gradient Decent optimization method.
 I will change model's batch size, DCG structure and make more optimization methods.
+Data Loader should make input in 3 dimension and make label to one-hot vector.
 '''
 import numpy as np
 
@@ -83,33 +84,98 @@ class Linear:
 class conv2d:
     '''
     convolution layer
+    User should declare input channel, kernel num, kenel size, padding mode.
+    There's two padding mode - same, none. Default mode is same padding.
     '''
-    def __init__(self, input_channel, kernel_num, kernel_size):
+    def __init__(self, input_channel, kernel_num, kernel_size, padding="same"):
         self.input_channel, self.kernel_num, self.kernel_size = input_channel, kernel_num, kernel_size
+        if padding is "none":
+            self.padding = 0
+        else:
+            self.padding = int(self.kernel_size / 2)
 
     def __call__(self, *args, **kwargs):
         '''
-        shape[0, 1, 2] : depth, height, width
+        args[0].shape[0, 1, 2] : depth, height, width
         args[0] is 4 dimension when model is batch-mode
+        self.k : layer's kernel - 4 dimension(kernel num, input depth, kernel width, kernel height)
+        self.b : layer's bias - 3 dimension(kernel num, output width, output height)
         '''
         self.k = np.random.rand(self.kernel_num, self.input_channel, self.kernel_size, self.kernel_size) - 0.5
-        self.b = np.random.rand(self.kernel_num, args[0].shape[1], args[0].shape[2])
+        self.b = np.random.rand(self.kernel_num, np.array(args[0]).shape[1] * np.array(args[0]).shape[2])
         return self.forward(args[0])
 
     def forward(self, input):
-        pass
+        '''
+        input, output : depth , height, width 3 dimension
+        Ravel kernel and its corresponding area of input. It is similar with im2col method.
+        '''
+        result = []
+        img = np.pad(input, pad_width=self.padding, constant_values=(0))[self.padding:-1]
+        tmp = node(input)
+        tmp.function = self.backward
+        dcg.append(tmp)
+
+        for n in range(len(self.k)):  # kernel num
+            out = []
+            for height in range(self.padding, img.shape[1] - self.padding):  # input height
+                for width in range(self.padding, img.shape[2] - self.padding):  # input width
+                    area = img[:, height - self.padding:height + self.padding + 1, width - self.padding:width + self.padding + 1]
+                    sum = np.sum(np.ravel(area, order='C') * np.ravel(self.k[n], order='C'))
+                    out.append(sum)
+            out = out + self.b[n]
+            result.append(np.reshape(out, (np.array(input).shape[1], np.array(input).shape[2])))
+
+        return result
+
+    def backward(self, input, gradient):
+        # calculate kernel's gradient
+        img = np.pad(input, pad_width=self.padding, constant_values=(0))[1:-1]
+        dc2dk2 = np.array([])
+        # convolution input & gradient to compute kernel's gradient
+        for n in range(self.kernel_num):  # kernel num
+            for depth in range(self.input_channel):  # gradient's channel
+                for height in range(self.kernel_size):  # height interval
+                    for width in range(self.kernel_size):  # width interval
+                        area = img[depth][height:height + gradient.shape[1], width:width + gradient.shape[2]]
+                        tmp = np.sum(np.ravel(area, order='C') * np.ravel(gradient[n], order='C'))
+                        dc2dk2 = np.append(dc2dk2, tmp)
+        dk = np.reshape(dc2dk2, (self.kernel_num, self.input_channel, self.kernel_size, self.kernel_size))  # num, depth, height, width
+        # convolution kernel(rotation 180') & gradient to compute input's gradient
+        output = np.array([])
+        for n in range(self.kernel_num):  # kernel num
+            plank = np.pad(gradient[n], pad_width=self.padding, constant_values=(0))  # a slice of gradient
+            _k = np.rot90(self.k[n], 2)  # 180' rotation
+
+            tmp = []
+            for depth in range(self.input_channel):  # input's depth
+                for height in range(1, plank.shape[0] - 1):
+                    for width in range(1, plank.shape[1] - 1):
+                        area = plank[height - 1:height + 2, width - 1:width + 2]
+                        tmp.append(np.sum(np.ravel(area, order='C') * np.ravel(_k[depth], order='C')))
+            output = np.append(output, tmp)
+        # output shape (6272,)????
+        output = np.reshape(output, (self.kernel_num, self.input_channel, self.kernel_size, self.kernel_size))
+        output = output.sum(axis=0) / self.kernel_num  # mean of each kernel's gradient
+
+        # update wieghts(change lr in optim class)
+        self.k -= 0.01 * dk
+        self.b -= 0.01 * gradient
+
+        return output
 
 class max_pool2d:
     '''
     max pooling layer
     need to add input's number iteration
     '''
+    def __init__(self, hsize, wsize):
+        self.h_size, self.w_size = hsize, wsize
+
     def __call__(self, *args, **kwargs):
         '''
-        args[0] : input
-        args[1], args[2] : input's height & width
+        args[0] : input data
         '''
-        self.h_size, self.w_size = args[1], args[2]
         return self.forward(args[0])
 
     def forward(self, input):
@@ -127,17 +193,18 @@ class max_pool2d:
             for height in range(0, input.shape[1], self.h_size):
                 for width in range(0, input.shape[2], self.w_size):
                     out.append(np.max(input[depth, height:height + self.h_size, width:width + self.w_size]))
-            result.append(np.reshape(out, (input.shape[1]/2, input.shape[2]/2)))
+            result.append(np.reshape(out, (int(input.shape[1]/2), int(input.shape[2]/2))))
 
         return result
 
     def backward(self, input, gradient):
+        gradient = np.reshape(gradient, (input.shape[0], int(input.shape[1]/2), int(input.shape[2]/2)))
         mask = np.zeros((input.shape[0], input.shape[1], input.shape[2]))
         for depth in range(input.shape[0]):
             for height in range(0, input.shape[1], self.h_size):
                 for width in range(0, input.shape[2], self.w_size):
-                    area = gradient[depth][height:height + self.h_size, width:width + self.w_size]
-                    if area.any() > 0:  # if their exists positive values
+                    area = input[depth][height:height + self.h_size, width:width + self.w_size]
+                    if area.all() != 0:  # if area's elements were all zero, gradients shall not pass
                         maxloc = area.argmax()
                         # assign rear layer's gradient to maxpooling & ReLU layer's gradient
                         mask[depth, height + int(maxloc / 2), width + maxloc % 2] = gradient[depth, int(height / 2), int(width / 2)]
