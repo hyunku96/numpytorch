@@ -16,13 +16,16 @@ import nn
 # build model
 class net:
     def __init__(self):
-        self.fc1 = nn.Linear(784, 28)
-        self.fc2 = nn.Linear(28, 10)
+        self.fc1 = nn.Linear(784, 50)
+        self.fc2 = nn.Linear(50, 25)
+        self.fc3 = nn.Linear(25, 10)
         self.sigmoid = nn.sigmoid()
+        self.relu = nn.relu()
 
     def forward(self, x):
-        x = self.sigmoid(self.fc1(x))
-        x = self.sigmoid(self.fc2(x))
+        x = self.relu(self.fc1(x))
+        x = self.relu(self.fc2(x))
+        x = self.sigmoid(self.fc3(x))
         return x
 
 # data loading
