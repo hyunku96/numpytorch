@@ -17,15 +17,26 @@ import nn
 class net:
     def __init__(self):
         self.fc1 = nn.Linear(784, 50)
-        self.fc2 = nn.Linear(50, 25)
-        self.fc3 = nn.Linear(25, 10)
+        self.fc2 = nn.Linear(9, 10)
         self.sigmoid = nn.sigmoid()
         self.relu = nn.relu()
+        self.conv1 = nn.conv2d(1, 1, 3)
+        self.conv2 = nn.conv2d(1, 1, 3)
+        self.conv3 = nn.conv2d(1, 1, 3)
+        self.max_pool = nn.max_pool2d(2, 2)
 
     def forward(self, x):
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
-        x = self.sigmoid(self.fc3(x))
+        '''
+        x = self.sigmoid(self.fc1(x))
+        x = self.fc2(x)
+        '''
+        x = self.relu(self.conv1(x))
+        x = self.max_pool(x)
+        x = self.relu(self.conv2(x))
+        x = self.max_pool(x)
+        x = self.relu(self.conv3(x))
+        x = self.max_pool(x)
+        x = self.sigmoid(self.fc2(x))
         return x
 
 # data loading
@@ -37,7 +48,8 @@ model = net()
 for epoch in range(100):
     indexes = np.random.permutation(len(train_set[1]))
     for index in tqdm(indexes):
-        output = model.forward(train_set[0][index])
+        img = np.reshape(train_set[0][index], (-1, 28, 28))
+        output = model.forward(img)
         label = np.zeros(10)  # convert to one-hot vector (maybe data loader can do this)
         label[train_set[1][index]] = 1
         loss = nn.MSE(output, label)

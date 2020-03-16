@@ -108,7 +108,7 @@ class conv2d:
         '''
         if self.k is None and self.b is None:
             self.k = np.random.rand(self.kernel_num, self.input_channel, self.kernel_size, self.kernel_size) - 0.5
-            self.b = np.random.rand(self.kernel_num, (np.array(args[0]).shape[1] + self.padding*2 - self.erosion*2) * (np.array(args[0]).shape[2] + self.padding*2 - self.erosion*2))
+            self.b = np.random.rand(self.kernel_num, (np.array(args[0]).shape[1] + self.padding*2 - self.erosion*2) * (np.array(args[0]).shape[2] + self.padding*2 - self.erosion*2)) - 0.5
         return self.forward(args[0])
 
     def forward(self, input):
@@ -198,9 +198,8 @@ class max_pool2d:
         result = []
         for depth in range(input.shape[0]):
             out = []
-            '''
-            for height in range(0, input.shape[1], self.h_size):
-                for width in range(0, input.shape[2], self.w_size):
+            for height in range(0, input.shape[1]-1, self.h_size):
+                for width in range(0, input.shape[2]-1, self.w_size):
                     out.append(np.max(input[depth, height:height + self.h_size, width:width + self.w_size]))
             result.append(np.reshape(out, (int(input.shape[1]/self.h_size), int(input.shape[2]/self.w_size))))
             '''
@@ -212,7 +211,7 @@ class max_pool2d:
                     width += self.w_size
                 height += self.h_size
             result.append(np.reshape(out, (int(input.shape[1]/self.h_size), int(input.shape[2]/self.w_size))))
-
+            '''
         return result
 
     def backward(self, input, gradient):
@@ -228,6 +227,30 @@ class max_pool2d:
                         mask[depth, height + int(maxloc / self.h_size), width + maxloc % self.w_size] = gradient[depth, int(height / self.h_size), int(width / self.w_size)]
 
         return mask
+
+class dropout:
+    '''
+    make mask at forward and save in dcg's data
+    '''
+    def __init__(self, ratio):
+        self.ratio = ratio
+
+    def __call__(self, *args, **kwargs):
+        return self.forward(args[0])
+
+    def forward(self, input):
+        mask = np.random.randint(0, 99, input.shape)
+        mask[mask < self.ratio*100] = 0
+        mask[mask != 0] = 1
+        mask = mask * input
+
+        tmp = node(mask)
+        tmp.function = self.backward
+        dcg.append(tmp)
+        return mask
+
+    def backward(self, mask, gradient):
+        return mask * gradient
 
 class sigmoid:
     '''
@@ -255,6 +278,27 @@ class sigmoid:
         gradient = self.sigmoid(input) * (1 - self.sigmoid(input)) * gradient
         return gradient
 
+class tanh:
+    '''
+    sigmoid activation fuction
+    '''
+
+    def __call__(self, *args, **kwargs):
+        return self.forward(args[0])
+
+    def forward(self, data):
+        '''
+        feed forward and store input data and backward function to DCG
+        '''
+        tmp = node(np.array(data))
+        tmp.function = self.backward
+        dcg.append(tmp)
+        return np.tanh(tmp.data)
+
+    def backward(self, input, gradient):
+        gradient = (1 - np.tanh(input)) * (1 + np.tanh(input)) * gradient
+        return gradient
+
 class relu:
     '''
     ReLU activation function
@@ -280,6 +324,35 @@ class relu:
         mask = gradient * mask
         return mask
 
+class Leaky_relu:
+    '''
+    ReLU activation function
+    '''
+    def __init__(self, alpha):
+        self.alpha = alpha
+
+    def __call__(self, *args, **kwargs):
+        return self.forward(args[0])
+
+    def forward(self, data):
+        '''
+        feed forward and store input data and backward function to DCG
+        '''
+        tmp = node(data)
+        tmp.function = self.backward
+        dcg.append(tmp)
+        return np.maximum(data * self.alpha, data)
+
+    def backward(self, input, gradient):
+        '''
+        using numpy boolean indexing(making mask)
+        '''
+        mask = input
+        mask[mask > 0] = 1
+        mask[mask < 0] = self.alpha
+        mask = gradient * mask
+        return mask
+
 class MSE:
     '''
     loss function
@@ -295,6 +368,27 @@ class MSE:
             return
         else:
             loss = self.output - self.label
+            tmp = dcg.pop()
+            gradient = tmp.function(tmp.data, loss)
+            while len(dcg) > 0:
+                tmp = dcg.pop()
+                gradient = tmp.function(tmp.data, gradient)
+
+class BCE:
+    '''
+    Binary Closs Entropy loss function
+    compute BCE and initiate back propagation
+    '''
+    def __init__(self, output, label):
+        self.output = output
+        self.label = label
+
+    def backward(self):
+        if len(dcg) <= 0:
+            print("Cannot find computation to calculate gradient")
+            return
+        else:
+            loss = (self.output - self.label) / (self.output * (1 - self.output))
             tmp = dcg.pop()
             gradient = tmp.function(tmp.data, loss)
             while len(dcg) > 0:
